@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import api from '../api/axios.js';
+import { SEED_PLACES } from '../../server/src/seed/seedData.js';
 
 export interface PlaceItem {
   _id: string;
@@ -37,6 +38,7 @@ export interface PlaceItem {
   status: string;
   distance?: number;
   createdAt: string;
+  isSample?: boolean;
 }
 
 export interface FeaturesFilter {
@@ -69,9 +71,24 @@ interface SearchContextType {
   clearUserLocation: () => void;
   places: PlaceItem[];
   loading: boolean;
+  isSampleData: boolean;
   fetchPlaces: () => Promise<void>;
   resetFilters: () => void;
 }
+
+const samplePlaces: PlaceItem[] = SEED_PLACES.filter((place) => place.status === 'approved').map((place) => ({
+  ...place,
+  createdAt: '2026-03-01T00:00:00.000Z',
+  isSample: true,
+}));
+const featureKeys: (keyof FeaturesFilter)[] = [
+  'wheelchairRamp',
+  'lift',
+  'accessibleToilet',
+  'parking',
+  'braille',
+  'audioAssistance',
+];
 
 const defaultFeatures: FeaturesFilter = {
   wheelchairRamp: false,
@@ -95,6 +112,7 @@ export const SearchProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [places, setPlaces] = useState<PlaceItem[]>([]);
   const [loading, setLoading] = useState(false);
+  const [isSampleData, setIsSampleData] = useState(false);
 
   const toggleFeature = (key: keyof FeaturesFilter) => {
     setFeatures((prev) => ({ ...prev, [key]: !prev[key] }));
@@ -136,6 +154,61 @@ export const SearchProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const fetchPlaces = useCallback(async () => {
+    const filterSamplePlaces = () => {
+      let matchingPlaces = samplePlaces.filter((place) => {
+        const searchText = `${place.name} ${place.category} ${place.description} ${place.address} ${place.area}`.toLowerCase();
+        return (
+          (!searchTerm.trim() || searchText.includes(searchTerm.trim().toLowerCase())) &&
+          (category === 'All' || place.category === category) &&
+          (area === 'All' || place.area === area) &&
+          place.averageRating >= minRating &&
+          place.accessibilityScore >= minScore &&
+          featureKeys.every((key) => !features[key] || place.accessibilityFeatures[key])
+        );
+      });
+
+      if (userLocation) {
+        const toRadians = (degrees: number) => (degrees * Math.PI) / 180;
+        const withDistance = matchingPlaces.map((place) => {
+          const [longitude, latitude] = place.location.coordinates;
+          const latitudeDifference = toRadians(latitude - userLocation.lat);
+          const longitudeDifference = toRadians(longitude - userLocation.lng);
+          const distance =
+            6371 *
+            2 *
+            Math.asin(
+              Math.sqrt(
+                Math.sin(latitudeDifference / 2) ** 2 +
+                  Math.cos(toRadians(userLocation.lat)) *
+                    Math.cos(toRadians(latitude)) *
+                    Math.sin(longitudeDifference / 2) ** 2
+              )
+            );
+          return { ...place, distance: Number(distance.toFixed(1)) };
+        });
+        matchingPlaces = withDistance.filter((place) => (place.distance ?? 0) <= 15);
+      }
+
+      return matchingPlaces.sort((first, second) => {
+        switch (sortBy) {
+          case 'rating_desc':
+            return second.averageRating - first.averageRating;
+          case 'newest':
+            return second.createdAt.localeCompare(first.createdAt);
+          case 'name_asc':
+            return first.name.localeCompare(second.name);
+          default:
+            return second.accessibilityScore - first.accessibilityScore;
+        }
+      });
+    };
+
+    if (import.meta.env.BASE_URL !== '/' && !import.meta.env.VITE_API_URL) {
+      setPlaces(filterSamplePlaces());
+      setIsSampleData(true);
+      return;
+    }
+
     setLoading(true);
     try {
       const params: any = {};
@@ -162,9 +235,12 @@ export const SearchProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const res = await api.get('/api/places/search', { params });
       if (res.data.success) {
         setPlaces(res.data.places || []);
+        setIsSampleData(false);
       }
     } catch (err) {
-      console.error('Error fetching places:', err);
+      console.warn('Places API unavailable; showing sample listings instead.', err);
+      setPlaces(filterSamplePlaces());
+      setIsSampleData(true);
     } finally {
       setLoading(false);
     }
@@ -197,6 +273,7 @@ export const SearchProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         clearUserLocation,
         places,
         loading,
+        isSampleData,
         fetchPlaces,
         resetFilters,
       }}

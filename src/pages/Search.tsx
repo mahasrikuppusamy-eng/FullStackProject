@@ -21,6 +21,7 @@ export const Search: React.FC = () => {
     setSortBy,
     places,
     loading,
+    isSampleData,
     category,
     area,
     features,
@@ -160,7 +161,8 @@ export const Search: React.FC = () => {
           {/* Controls Bar */}
           <div className="bg-white p-4 rounded-2xl border border-slate-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div className="text-xs font-semibold text-slate-600">
-              Found <span className="font-black text-indigo-600 text-sm">{places.length}</span> verified places in Coimbatore
+              Found <span className="font-black text-indigo-600 text-sm">{places.length}</span>{' '}
+              {isSampleData ? 'sample places' : 'verified places'} in Coimbatore
             </div>
 
             <div className="flex items-center space-x-3 w-full sm:w-auto justify-between sm:justify-end">
@@ -207,6 +209,12 @@ export const Search: React.FC = () => {
               </div>
             </div>
           </div>
+
+          {isSampleData && (
+            <p role="status" className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
+              Showing sample listings and photos because the live places service is not connected.
+            </p>
+          )}
 
           {/* Place Cards */}
           {loading ? (

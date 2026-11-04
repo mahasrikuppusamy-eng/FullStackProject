@@ -10,10 +10,11 @@ interface PlaceCardProps {
 }
 
 export const PlaceCard: React.FC<PlaceCardProps> = ({ place }) => {
+  const placeholderPhoto = `${import.meta.env.BASE_URL}place-placeholder.svg`;
   const defaultPhoto =
     place.photos && place.photos.length > 0
       ? place.photos[0]
-      : 'https://images.unsplash.com/photo-1519494026892-80bbd2d6fd0d?w=800&auto=format&fit=crop&q=80';
+      : placeholderPhoto;
 
   return (
     <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs hover:shadow-md hover:border-slate-300 transition-all duration-200 flex flex-col overflow-hidden group">
@@ -24,6 +25,13 @@ export const PlaceCard: React.FC<PlaceCardProps> = ({ place }) => {
           alt={place.name}
           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
           loading="lazy"
+          onError={(event) => {
+            if (!event.currentTarget.src.endsWith('/place-placeholder.svg')) {
+              event.currentTarget.src = placeholderPhoto;
+            } else {
+              event.currentTarget.hidden = true;
+            }
+          }}
         />
         <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
 
@@ -81,7 +89,7 @@ export const PlaceCard: React.FC<PlaceCardProps> = ({ place }) => {
             </span>
             <span className="text-slate-300">•</span>
             <span className="text-xs text-emerald-600 font-medium flex items-center">
-              <ShieldCheck className="w-3.5 h-3.5 mr-0.5" /> Verified
+              <ShieldCheck className="w-3.5 h-3.5 mr-0.5" /> {place.isSample ? 'Sample listing' : 'Verified'}
             </span>
           </div>
 

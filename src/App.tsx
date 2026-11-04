@@ -19,7 +19,7 @@ import { Accessibility, MapPin, Heart } from 'lucide-react';
 
 export default function App() {
   return (
-    <Router>
+    <Router basename={import.meta.env.BASE_URL}>
       <AuthProvider>
         <SearchProvider>
           <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900 font-sans selection:bg-indigo-500 selection:text-white">

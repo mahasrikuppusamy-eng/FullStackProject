@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 480" role="img" aria-label="Place photo unavailable">
+  <rect width="800" height="480" fill="#eef2ff"/>
+  <path d="M0 370h800v110H0z" fill="#e0e7ff"/>
+  <path d="M260 370V175h280v195M225 370h350M325 225h55v65h-55zm95 0h55v65h-55z" fill="none" stroke="#6366f1" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"/>
+  <path d="M365 370v-65h70v65" fill="none" stroke="#6366f1" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"/>
+</svg>
