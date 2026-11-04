@@ -103,7 +103,11 @@ export const PlaceDetail: React.FC = () => {
           headers: { 'Content-Type': 'multipart/form-data' },
         });
       } else {
-        const imgToScan = imageUrl || place?.photos?.[0] || 'https://images.unsplash.com/photo-1519494026892-80bbd2d6fd0d?w=800&auto=format&fit=crop&q=80';
+        const imgToScan = imageUrl || place?.photos?.[0];
+        if (!imgToScan) {
+          alert('Upload an entrance photo before requesting an AI assessment.');
+          return;
+        }
         res = await api.post(`/api/places/${id}/assess`, { imageUrl: imgToScan });
       }
 
@@ -288,7 +292,7 @@ export const PlaceDetail: React.FC = () => {
         </div>
 
         <p className="text-xs text-indigo-100/90 leading-relaxed max-w-3xl">
-          Upload or select an entrance photo. Gemini analyzes ramps, ramp width adequacy, door clearance, step barriers, and calculates a confidence percentage.
+          Upload or select an entrance photo. Gemini reports visible ramps, steps, and doorway clearance; it cannot verify hidden conditions or exact measurements from a photo alone.
         </p>
 
         {/* Upload & Trigger Controls */}
@@ -340,7 +344,7 @@ export const PlaceDetail: React.FC = () => {
               <div className="flex items-center space-x-2">
                 <span className="text-xs font-semibold text-slate-500">Confidence:</span>
                 <span className="text-xs font-black text-indigo-700 bg-indigo-50 px-2.5 py-0.5 rounded-full border border-indigo-200">
-                  {Math.round((assessmentResult.confidence || 0.9) * 100)}%
+                  {Math.round((assessmentResult.confidence ?? 0) * 100)}%
                 </span>
               </div>
             </div>
@@ -348,30 +352,54 @@ export const PlaceDetail: React.FC = () => {
             {/* Checklist items */}
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 text-xs">
               <div className={`p-3 rounded-xl border flex items-center justify-between ${
-                assessmentResult.hasRamp ? 'bg-emerald-50 border-emerald-200 text-emerald-900' : 'bg-red-50 border-red-200 text-red-900'
+                assessmentResult.hasRamp === true
+                  ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                  : assessmentResult.hasRamp === false
+                    ? 'bg-red-50 border-red-200 text-red-900'
+                    : 'bg-slate-50 border-slate-200 text-slate-700'
               }`}>
                 <span className="font-semibold">Wheelchair Ramp</span>
-                {assessmentResult.hasRamp ? <Check className="w-4 h-4 text-emerald-600" /> : <X className="w-4 h-4 text-red-600" />}
+                {assessmentResult.hasRamp === true
+                  ? <Check className="w-4 h-4 text-emerald-600" />
+                  : assessmentResult.hasRamp === false
+                    ? <X className="w-4 h-4 text-red-600" />
+                    : <span className="font-semibold">Not clear in photo</span>}
               </div>
 
               <div className={`p-3 rounded-xl border flex items-center justify-between ${
-                assessmentResult.rampWidthAdequate ? 'bg-emerald-50 border-emerald-200 text-emerald-900' : 'bg-red-50 border-red-200 text-red-900'
+                assessmentResult.rampWidthAdequate === true
+                  ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                  : assessmentResult.rampWidthAdequate === false
+                    ? 'bg-red-50 border-red-200 text-red-900'
+                    : 'bg-slate-50 border-slate-200 text-slate-700'
               }`}>
                 <span className="font-semibold">Ramp Width Adequate</span>
-                {assessmentResult.rampWidthAdequate ? <Check className="w-4 h-4 text-emerald-600" /> : <X className="w-4 h-4 text-red-600" />}
+                {assessmentResult.rampWidthAdequate === true
+                  ? <Check className="w-4 h-4 text-emerald-600" />
+                  : assessmentResult.rampWidthAdequate === false
+                    ? <X className="w-4 h-4 text-red-600" />
+                    : <span className="font-semibold">Not measurable</span>}
               </div>
 
               <div className={`p-3 rounded-xl border flex items-center justify-between ${
-                !assessmentResult.hasSteps ? 'bg-emerald-50 border-emerald-200 text-emerald-900' : 'bg-amber-50 border-amber-200 text-amber-900'
+                assessmentResult.hasSteps === true
+                  ? 'bg-amber-50 border-amber-200 text-amber-900'
+                  : assessmentResult.hasSteps === false
+                    ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                    : 'bg-slate-50 border-slate-200 text-slate-700'
               }`}>
                 <span className="font-semibold">Step Barriers</span>
-                {assessmentResult.hasSteps ? <span className="font-bold text-amber-700">Steps Present</span> : <span className="font-bold text-emerald-700">Step-free</span>}
+                {assessmentResult.hasSteps === true
+                  ? <span className="font-bold text-amber-700">Steps Present</span>
+                  : assessmentResult.hasSteps === false
+                    ? <span className="font-bold text-emerald-700">No steps visible</span>
+                    : <span className="font-semibold">Not clear in photo</span>}
               </div>
 
               <div className="p-3 rounded-xl border bg-slate-50 border-slate-200 text-slate-800 flex items-center justify-between">
                 <span className="font-semibold">Doorway Clearance</span>
                 <span className="font-bold capitalize bg-white px-2 py-0.5 rounded border border-slate-200">
-                  {assessmentResult.doorWidth || 'wide'}
+                  {assessmentResult.doorWidth || 'unknown'}
                 </span>
               </div>
             </div>

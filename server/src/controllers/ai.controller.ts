@@ -5,6 +5,13 @@ import { assessImageAccessibility } from '../utils/gemini.js';
 
 export async function assessPlace(req: Request, res: Response) {
   try {
+    if (!process.env.GEMINI_API_KEY) {
+      return res.status(503).json({
+        success: false,
+        message: 'AI assessment is unavailable because GEMINI_API_KEY is not configured on the server.',
+      });
+    }
+
     const { id } = req.params;
     let base64Image: string = '';
     let mimeType = 'image/jpeg';
@@ -28,23 +35,26 @@ export async function assessPlace(req: Request, res: Response) {
       displayImageUrl = req.body.imageUrl || '';
     } else if (req.body.imageUrl) {
       displayImageUrl = req.body.imageUrl;
-      // Fetch image from URL or use as reference
-      try {
-        const response = await fetch(req.body.imageUrl);
-        const arrayBuffer = await response.arrayBuffer();
-        base64Image = Buffer.from(arrayBuffer).toString('base64');
-        mimeType = response.headers.get('content-type') || 'image/jpeg';
-      } catch (e) {
-        console.warn('Could not fetch external image, using default visual analysis profile');
+      const response = await fetch(req.body.imageUrl);
+      if (!response.ok) {
+        throw new Error(`Could not load the entrance image (HTTP ${response.status}).`);
       }
+      const contentType = response.headers.get('content-type')?.split(';')[0].trim() || '';
+      if (!contentType.startsWith('image/')) {
+        throw new Error('The selected URL did not return an image.');
+      }
+      const arrayBuffer = await response.arrayBuffer();
+      base64Image = Buffer.from(arrayBuffer).toString('base64');
+      mimeType = contentType;
     }
 
     if (!base64Image) {
-      // If no image is provided, provide a sample entrance scan for demo
-      base64Image = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+      throw new Error('Upload or select an entrance image before requesting an AI assessment.');
+    }
+    if (!mimeType.startsWith('image/')) {
+      throw new Error('The uploaded file must be an image.');
     }
 
-    // Call Gemini Multimodal analysis
     const assessmentResult = await assessImageAccessibility(base64Image, mimeType);
 
     const assessmentData = {
@@ -71,11 +81,11 @@ export async function assessPlace(req: Request, res: Response) {
       success: true,
       assessment: assessmentData,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('assessPlace error:', error);
     return res.status(500).json({
       success: false,
-      message: error.message || 'AI assessment failed',
+      message: error instanceof Error ? error.message : 'AI assessment failed',
     });
   }
 }

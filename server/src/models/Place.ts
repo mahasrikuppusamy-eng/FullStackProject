@@ -10,10 +10,10 @@ export interface IAccessibilityFeatures {
 }
 
 export interface IAiAssessment {
-  hasRamp?: boolean;
-  rampWidthAdequate?: boolean;
-  hasSteps?: boolean;
-  doorWidth?: 'wide' | 'narrow';
+  hasRamp?: boolean | null;
+  rampWidthAdequate?: boolean | null;
+  hasSteps?: boolean | null;
+  doorWidth?: 'wide' | 'narrow' | 'unknown';
   confidence?: number;
   recommendations?: string[];
   assessedAt?: Date;
@@ -115,7 +115,7 @@ const PlaceSchema = new Schema<IPlace>(
       hasRamp: Boolean,
       rampWidthAdequate: Boolean,
       hasSteps: Boolean,
-      doorWidth: { type: String, enum: ['wide', 'narrow'] },
+      doorWidth: { type: String, enum: ['wide', 'narrow', 'unknown'] },
       confidence: Number,
       recommendations: [String],
       assessedAt: Date,

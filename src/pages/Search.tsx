@@ -8,10 +8,11 @@ import {
   X,
   SlidersHorizontal,
 } from 'lucide-react';
-import { useSearch } from '../context/SearchContext.js';
+import { FeaturesFilter, useSearch } from '../context/SearchContext.js';
 import { Filters } from '../components/Filters.js';
 import { PlaceCard } from '../components/PlaceCard.js';
 import { VoiceMicButton } from '../components/VoiceMicButton.js';
+import { ACCESSIBILITY_FEATURES_META } from '../utils/coimbatore.js';
 
 export const Search: React.FC = () => {
   const {
@@ -34,7 +35,9 @@ export const Search: React.FC = () => {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [mobileFilterOpen, setMobileFilterOpen] = useState(false);
 
-  const activeFeatures = Object.entries(features).filter(([_, val]) => val);
+  const activeFeatures = (Object.keys(features) as (keyof FeaturesFilter)[]).filter(
+    (key) => features[key]
+  );
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
@@ -92,17 +95,20 @@ export const Search: React.FC = () => {
             </span>
           )}
 
-          {activeFeatures.map(([key]) => (
-            <span
-              key={key}
-              className="inline-flex items-center space-x-1 px-2.5 py-1 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-lg text-xs font-semibold"
-            >
-              <span>{key}</span>
-              <button onClick={() => toggleFeature(key as any)} className="hover:text-emerald-950">
-                <X className="w-3 h-3" />
-              </button>
-            </span>
-          ))}
+          {activeFeatures.map((key) => {
+            const label = ACCESSIBILITY_FEATURES_META.find((feature) => feature.key === key)?.label ?? key;
+            return (
+              <span
+                key={key}
+                className="inline-flex items-center space-x-1 px-2.5 py-1 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-lg text-xs font-semibold"
+              >
+                <span>{label}</span>
+                <button onClick={() => toggleFeature(key)} className="hover:text-emerald-950">
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            );
+          })}
 
           <button
             onClick={resetFilters}

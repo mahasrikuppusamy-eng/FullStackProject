@@ -1,53 +1,43 @@
 import { GoogleGenAI, Type } from '@google/genai';
 
 export interface AiAssessmentResult {
-  hasRamp: boolean;
-  rampWidthAdequate: boolean;
-  hasSteps: boolean;
-  doorWidth: 'wide' | 'narrow';
+  hasRamp: boolean | null;
+  rampWidthAdequate: boolean | null;
+  hasSteps: boolean | null;
+  doorWidth: 'wide' | 'narrow' | 'unknown';
   confidence: number;
   recommendations: string[];
 }
-
-// Server-side initialization per Google GenAI SDK standards
-const ai = new GoogleGenAI({
-  apiKey: process.env.GEMINI_API_KEY || '',
-  httpOptions: {
-    headers: {
-      'User-Agent': 'aistudio-build',
-    },
-  },
-});
 
 export async function assessImageAccessibility(
   imageBase64: string,
   mimeType: string = 'image/jpeg'
 ): Promise<AiAssessmentResult> {
-  if (!process.env.GEMINI_API_KEY) {
-    // Graceful fallback if API key is not configured
-    return {
-      hasRamp: true,
-      rampWidthAdequate: true,
-      hasSteps: false,
-      doorWidth: 'wide',
-      confidence: 0.88,
-      recommendations: [
-        'Add high-contrast tactile edge indicators on ramp thresholds.',
-        'Ensure continuous handrail on both sides of entry ramp.',
-        'Provide automated sliding entrance doors for effortless wheelchair entry.',
-      ],
-    };
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    throw new Error('AI assessment is unavailable because GEMINI_API_KEY is not configured on the server.');
+  }
+  if (!imageBase64) {
+    throw new Error('An entrance image is required for an AI assessment.');
   }
 
   try {
+    const ai = new GoogleGenAI({
+      apiKey,
+      httpOptions: {
+        headers: {
+          'User-Agent': 'aistudio-build',
+        },
+      },
+    });
     const prompt = `Analyze this entrance/building photo for physical accessibility for people with disabilities (wheelchair users, visually impaired, mobility aids).
 Assess:
-1. Is there a wheelchair accessible ramp?
-2. Is the ramp width adequate (at least 900mm / 3 feet wide)?
-3. Are there steps or stairs without an alternative level/ramp path?
-4. Is the entrance door width 'wide' (>= 800mm clear opening) or 'narrow'?
-5. Confidence rating between 0.0 and 1.0.
-6. Actionable recommendations to improve barrier-free access.
+1. Is a wheelchair accessible ramp visible? Answer yes, no, or unknown if the entrance area is not clearly shown.
+2. Is the ramp width visibly adequate (at least 900mm / 3 feet)? Answer unknown without a reliable visual scale.
+3. Are steps or stairs visible without an alternative level/ramp path? Answer unknown if the entrance area is not clearly shown.
+4. Is the entrance door width visibly 'wide' (>= 800mm clear opening) or 'narrow'? Answer unknown without a reliable visual reference.
+5. Confidence rating between 0.0 and 1.0, reflecting only what can be seen in this image.
+6. Actionable recommendations based only on visible barriers. Do not claim that unseen features are present or absent.
 Return ONLY valid JSON matching the schema.`;
 
     const imagePart = {
@@ -71,20 +61,24 @@ Return ONLY valid JSON matching the schema.`;
           type: Type.OBJECT,
           properties: {
             hasRamp: {
-              type: Type.BOOLEAN,
-              description: 'Whether an accessible ramp is present at the entrance.',
+              type: Type.STRING,
+              enum: ['yes', 'no', 'unknown'],
+              description: 'Whether an accessible ramp is visibly present; use unknown if not clear.',
             },
             rampWidthAdequate: {
-              type: Type.BOOLEAN,
-              description: 'Whether the ramp width accommodates standard wheelchairs.',
+              type: Type.STRING,
+              enum: ['yes', 'no', 'unknown'],
+              description: 'Whether the ramp width visibly meets wheelchair needs; use unknown without a scale.',
             },
             hasSteps: {
-              type: Type.BOOLEAN,
-              description: 'Whether there are steps/stairs obstructing entry.',
+              type: Type.STRING,
+              enum: ['yes', 'no', 'unknown'],
+              description: 'Whether obstructing steps are visible; use unknown if the entrance is not clear.',
             },
             doorWidth: {
               type: Type.STRING,
-              description: "'wide' or 'narrow'",
+              enum: ['wide', 'narrow', 'unknown'],
+              description: 'Visible door clearance; use unknown without a reliable visual reference.',
             },
             confidence: {
               type: Type.NUMBER,
@@ -113,28 +107,38 @@ Return ONLY valid JSON matching the schema.`;
       throw new Error('Empty response received from Gemini');
     }
 
-    const parsed: AiAssessmentResult = JSON.parse(text);
+    const parsed: unknown = JSON.parse(text);
+    if (typeof parsed !== 'object' || parsed === null) {
+      throw new Error('Gemini returned an invalid accessibility assessment.');
+    }
+
+    const result = parsed as Record<string, unknown>;
+    if (
+      !['yes', 'no', 'unknown'].includes(String(result.hasRamp)) ||
+      !['yes', 'no', 'unknown'].includes(String(result.rampWidthAdequate)) ||
+      !['yes', 'no', 'unknown'].includes(String(result.hasSteps)) ||
+      (result.doorWidth !== 'wide' && result.doorWidth !== 'narrow' && result.doorWidth !== 'unknown') ||
+      typeof result.confidence !== 'number' ||
+      !Number.isFinite(result.confidence) ||
+      !Array.isArray(result.recommendations) ||
+      !result.recommendations.every((recommendation) => typeof recommendation === 'string')
+    ) {
+      throw new Error('Gemini returned an incomplete accessibility assessment.');
+    }
+
+    const toBooleanOrUnknown = (value: unknown) =>
+      value === 'yes' ? true : value === 'no' ? false : null;
+
     return {
-      hasRamp: Boolean(parsed.hasRamp),
-      rampWidthAdequate: Boolean(parsed.rampWidthAdequate),
-      hasSteps: Boolean(parsed.hasSteps),
-      doorWidth: parsed.doorWidth === 'narrow' ? 'narrow' : 'wide',
-      confidence: Math.round(Number(parsed.confidence || 0.85) * 100) / 100,
-      recommendations: Array.isArray(parsed.recommendations) ? parsed.recommendations : [],
+      hasRamp: toBooleanOrUnknown(result.hasRamp),
+      rampWidthAdequate: toBooleanOrUnknown(result.rampWidthAdequate),
+      hasSteps: toBooleanOrUnknown(result.hasSteps),
+      doorWidth: result.doorWidth,
+      confidence: Math.round(Math.max(0, Math.min(1, result.confidence)) * 100) / 100,
+      recommendations: result.recommendations,
     };
   } catch (error) {
     console.error('Gemini accessibility assessment error:', error);
-    // Return sensible fallback structure so user flow never breaks
-    return {
-      hasRamp: true,
-      rampWidthAdequate: true,
-      hasSteps: false,
-      doorWidth: 'wide',
-      confidence: 0.82,
-      recommendations: [
-        'Ensure continuous handrail on both sides of entrance ramp.',
-        'Install tactile ground surface indicators for visually impaired visitors.',
-      ],
-    };
+    throw error;
   }
 }

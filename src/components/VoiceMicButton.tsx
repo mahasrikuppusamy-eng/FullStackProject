@@ -1,10 +1,95 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Mic, MicOff, Volume2, Sparkles, X } from 'lucide-react';
-import { useSearch } from '../context/SearchContext.js';
+import { FeaturesFilter, useSearch } from '../context/SearchContext.js';
 import { COIMBATORE_AREAS, CATEGORIES } from '../utils/coimbatore.js';
 
 interface VoiceMicButtonProps {
-  onParsedQuery?: (parsed: { feature?: string; category?: string; area?: string; rawText: string }) => void;
+  onParsedQuery?: (parsed: {
+    features: (keyof FeaturesFilter)[];
+    category?: string;
+    area?: string;
+    searchTerm: string;
+    rawText: string;
+  }) => void;
+}
+
+const featureRules: { key: keyof FeaturesFilter; label: string; aliases: string[] }[] = [
+  { key: 'wheelchairRamp', label: 'wheelchair ramps', aliases: ['wheelchair ramp', 'wheelchair ramps', 'ramp', 'ramps', 'wheelchair accessible'] },
+  { key: 'lift', label: 'lifts', aliases: ['lift', 'lifts', 'elevator', 'elevators'] },
+  { key: 'accessibleToilet', label: 'accessible toilets', aliases: ['accessible toilet', 'accessible toilets', 'toilet', 'toilets', 'washroom', 'washrooms', 'restroom', 'restrooms'] },
+  { key: 'parking', label: 'accessible parking', aliases: ['accessible parking', 'parking'] },
+  { key: 'braille', label: 'Braille signage', aliases: ['braille', 'tactile signage'] },
+  { key: 'audioAssistance', label: 'audio assistance', aliases: ['audio assistance', 'audio', 'hearing assistance'] },
+];
+
+const categoryRules: { category: string; aliases: string[] }[] = [
+  { category: 'Hospital', aliases: ['hospitals', 'hospital', 'clinics', 'clinic', 'doctors', 'doctor', 'medical center', 'medical centre'] },
+  { category: 'College / Education', aliases: ['colleges', 'college', 'universities', 'university', 'schools', 'school'] },
+  { category: 'Shopping Mall', aliases: ['shopping malls', 'shopping mall', 'malls', 'mall', 'shopping centers', 'shopping center'] },
+  { category: 'Restaurant / Cafe', aliases: ['restaurants', 'restaurant', 'cafes', 'cafe', 'coffee shops', 'coffee shop', 'food places', 'hotel'] },
+  { category: 'Office / Tech Park', aliases: ['tech parks', 'tech park', 'it parks', 'it park', 'offices', 'office'] },
+  { category: 'Government Office', aliases: ['government offices', 'government office', 'collectorate', 'government'] },
+];
+
+const commandFillers = [
+  'find', 'find me', 'show', 'show me', 'search', 'look for', 'looking for',
+  'tell me', 'tell', 'get', 'list', 'please',
+  'places', 'place', 'nearby', 'near', 'around', 'in', 'at', 'with', 'that have',
+  'that has', 'having', 'has', 'have', 'and', 'for', 'the', 'a', 'an', 'me', 'coimbatore',
+  'accessible', 'accessibility', 'where', 'what', 'which', 'is', 'are', 'do',
+  'does', 'can', 'could', 'would', 'there', 'i', 'you', 'located', 'available',
+];
+
+function normalizePhrase(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/&/g, ' and ')
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function containsPhrase(text: string, phrase: string) {
+  return ` ${text} `.includes(` ${normalizePhrase(phrase)} `);
+}
+
+function parseVoiceCommand(text: string) {
+  const normalized = normalizePhrase(text);
+  const categoryRule = categoryRules.find((rule) => rule.aliases.some((alias) => containsPhrase(normalized, alias)));
+  const area = [...COIMBATORE_AREAS]
+    .sort((first, second) => second.length - first.length)
+    .find((candidate) =>
+      [candidate, ...(candidate === 'RS Puram' ? ['r s puram'] : [])].some((alias) =>
+        containsPhrase(normalized, alias)
+      )
+    );
+  const features = featureRules
+    .filter((rule) => rule.aliases.some((alias) => containsPhrase(normalized, alias)))
+    .map((rule) => rule.key);
+
+  const removablePhrases = [
+    ...categoryRules.flatMap((rule) => rule.aliases),
+    ...featureRules.flatMap((rule) => rule.aliases),
+    ...COIMBATORE_AREAS,
+    ...COIMBATORE_AREAS.flatMap((candidate) =>
+      candidate.toLowerCase() === 'rs puram' ? ['r s puram'] : []
+    ),
+    ...commandFillers,
+  ];
+
+  const searchTerm = removablePhrases
+    .sort((first, second) => second.length - first.length)
+    .reduce((remaining, phrase) => {
+      const escapedPhrase = normalizePhrase(phrase)
+        .split(' ')
+        .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+        .join('\\s+');
+      return remaining.replace(new RegExp(`\\b${escapedPhrase}\\b`, 'gi'), ' ');
+    }, normalized)
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  return { category: categoryRule?.category, area, features, searchTerm };
 }
 
 export const VoiceMicButton: React.FC<VoiceMicButtonProps> = ({ onParsedQuery }) => {
@@ -19,7 +104,6 @@ export const VoiceMicButton: React.FC<VoiceMicButtonProps> = ({ onParsedQuery })
     setCategory,
     setArea,
     setFeatures,
-    fetchPlaces,
   } = useSearch();
 
   useEffect(() => {
@@ -50,6 +134,9 @@ export const VoiceMicButton: React.FC<VoiceMicButtonProps> = ({ onParsedQuery })
     recognition.onerror = (event: any) => {
       console.warn('Speech recognition error:', event.error);
       setIsListening(false);
+      if (event.error === 'aborted') {
+        return;
+      }
       setFeedback('Could not hear clearly. Try clicking one of the sample voice commands.');
     };
 
@@ -77,83 +164,53 @@ export const VoiceMicButton: React.FC<VoiceMicButtonProps> = ({ onParsedQuery })
   };
 
   const handleVoiceCommand = (text: string) => {
-    const lower = text.toLowerCase();
-    let detectedFeature: string | undefined = undefined;
-    let detectedCategory: string | undefined = undefined;
-    let detectedArea: string | undefined = undefined;
+    const parsed = parseVoiceCommand(text);
+    setCategory(parsed.category || 'All');
+    setArea(parsed.area || 'All');
+    setSearchTerm(parsed.searchTerm);
+    const selectedFeatures: FeaturesFilter = {
+      wheelchairRamp: false,
+      lift: false,
+      accessibleToilet: false,
+      parking: false,
+      braille: false,
+      audioAssistance: false,
+    };
+    featureRules.forEach(({ key }) => {
+      selectedFeatures[key] = parsed.features.includes(key);
+    });
+    setFeatures(selectedFeatures);
 
-    // Detect Accessibility Feature
-    if (lower.includes('ramp') || lower.includes('wheelchair')) {
-      detectedFeature = 'wheelchairRamp';
-    } else if (lower.includes('lift') || lower.includes('elevator')) {
-      detectedFeature = 'lift';
-    } else if (lower.includes('toilet') || lower.includes('washroom') || lower.includes('restroom')) {
-      detectedFeature = 'accessibleToilet';
-    } else if (lower.includes('parking')) {
-      detectedFeature = 'parking';
-    } else if (lower.includes('braille')) {
-      detectedFeature = 'braille';
-    } else if (lower.includes('audio') || lower.includes('sound')) {
-      detectedFeature = 'audioAssistance';
-    }
-
-    // Detect Category
-    if (lower.includes('hospital') || lower.includes('clinic') || lower.includes('doctor')) {
-      detectedCategory = 'Hospital';
-    } else if (lower.includes('college') || lower.includes('university') || lower.includes('school')) {
-      detectedCategory = 'College / Education';
-    } else if (lower.includes('mall') || lower.includes('shopping')) {
-      detectedCategory = 'Shopping Mall';
-    } else if (lower.includes('restaurant') || lower.includes('hotel') || lower.includes('cafe') || lower.includes('coffee') || lower.includes('food')) {
-      detectedCategory = 'Restaurant / Cafe';
-    } else if (lower.includes('tech park') || lower.includes('tidel') || lower.includes('office') || lower.includes('kgisl')) {
-      detectedCategory = 'Office / Tech Park';
-    } else if (lower.includes('collectorate') || lower.includes('government') || lower.includes('station')) {
-      detectedCategory = 'Government Office';
-    }
-
-    // Detect Coimbatore Area
-    for (const a of COIMBATORE_AREAS) {
-      if (lower.includes(a.toLowerCase())) {
-        detectedArea = a;
-        break;
-      }
-    }
-
-    // Apply parsed filters
-    if (detectedCategory) {
-      setCategory(detectedCategory);
-    }
-    if (detectedArea) {
-      setArea(detectedArea);
-    }
-    if (detectedFeature) {
-      setFeatures((prev) => ({
-        ...prev,
-        [detectedFeature!]: true,
-      }));
-    }
-
-    const message = `Searching Coimbatore places: ${detectedCategory || 'all places'} ${
-      detectedArea ? 'in ' + detectedArea : ''
-    } ${detectedFeature ? 'with ' + detectedFeature : ''}`;
+    const featureLabels = featureRules
+      .filter(({ key }) => parsed.features.includes(key))
+      .map(({ label }) => label);
+    const filters = [
+      parsed.area && `in ${parsed.area}`,
+      featureLabels.length > 0 && `with ${featureLabels.join(' and ')}`,
+    ].filter(Boolean);
+    const message =
+      !parsed.category && !parsed.area && parsed.features.length === 0 && !parsed.searchTerm
+        ? 'I could not identify a place, area, or accessibility feature. Try one of the example searches.'
+        : parsed.category
+          ? `Searching ${parsed.category}${filters.length ? ` ${filters.join(' ')}` : ''}.`
+          : parsed.searchTerm
+            ? `Searching for "${parsed.searchTerm}"${filters.length ? ` ${filters.join(' ')}` : ''}.`
+            : `Searching places${filters.length ? ` ${filters.join(' ')}` : ''}.`;
 
     setFeedback(message);
-    speakText(message);
+    if (!message.startsWith('I could not')) {
+      speakText(message);
+    }
 
     if (onParsedQuery) {
       onParsedQuery({
-        feature: detectedFeature,
-        category: detectedCategory,
-        area: detectedArea,
+        features: parsed.features,
+        category: parsed.category,
+        area: parsed.area,
+        searchTerm: parsed.searchTerm,
         rawText: text,
       });
     }
-
-    // Trigger fresh search
-    setTimeout(() => {
-      fetchPlaces();
-    }, 150);
   };
 
   const toggleListen = () => {
@@ -177,9 +234,9 @@ export const VoiceMicButton: React.FC<VoiceMicButtonProps> = ({ onParsedQuery })
   };
 
   const sampleCommands = [
-    'Find hospitals in Peelamedu with wheelchair ramp',
+    'Find PSG Hospitals in Peelamedu with wheelchair ramp and accessible toilet',
     'Show shopping malls with elevator',
-    'Restaurants in RS Puram with accessible toilet',
+    'Where can I find restaurants in RS Puram with an accessible toilet?',
     'Tech parks in Peelamedu with braille',
   ];
 
@@ -246,6 +303,9 @@ export const VoiceMicButton: React.FC<VoiceMicButtonProps> = ({ onParsedQuery })
           </div>
 
           <div className="pt-2 border-t border-slate-100">
+            <p className="text-[11px] text-slate-500 mb-2">
+              Voice search filters the place directory using the words it recognizes.
+            </p>
             <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
               Try saying or click:
             </p>
@@ -255,6 +315,8 @@ export const VoiceMicButton: React.FC<VoiceMicButtonProps> = ({ onParsedQuery })
                   key={i}
                   type="button"
                   onClick={() => {
+                    recognitionRef.current?.abort();
+                    setIsListening(false);
                     setTranscript(cmd);
                     handleVoiceCommand(cmd);
                   }}

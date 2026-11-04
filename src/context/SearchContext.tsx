@@ -25,10 +25,10 @@ export interface PlaceItem {
   accessibilityScore: number;
   photos: string[];
   aiAssessment?: {
-    hasRamp?: boolean;
-    rampWidthAdequate?: boolean;
-    hasSteps?: boolean;
-    doorWidth?: 'wide' | 'narrow';
+    hasRamp?: boolean | null;
+    rampWidthAdequate?: boolean | null;
+    hasSteps?: boolean | null;
+    doorWidth?: 'wide' | 'narrow' | 'unknown';
     confidence?: number;
     recommendations?: string[];
     assessedAt?: string;
