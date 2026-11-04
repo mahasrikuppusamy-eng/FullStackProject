@@ -1,0 +1,6 @@
+{
+  "name": "AccessAble - Coimbatore",
+  "description": "Accessibility Discovery Platform for the city of Coimbatore, Tamil Nadu, India. Discover, filter, and verify accessible public places, hospitals, colleges, and restaurants.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
